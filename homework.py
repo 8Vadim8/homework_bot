@@ -1,5 +1,6 @@
 import logging.config
 import os
+import sys
 import time
 from http import HTTPStatus
 
@@ -15,8 +16,8 @@ load_dotenv()
 PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+TELEGRAM_RETRY_TIME = 600
 
-RETRY_TIME = 600
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
@@ -47,18 +48,17 @@ def get_api_answer(current_timestamp):
     if response.status_code != HTTPStatus.OK:
         raise requests.HTTPError('Ошибка при запросе к основному API, '
                                  f'статус ответа {response.status_code}')
-    else:
-        return response.json()
+    return response.json()
 
 
 def check_response(response):
     """Проверяем ответ API на корректность."""
     logger.debug('Проверяем ответ API на корректность.')
-    if type(response) is not dict:
+    if not isinstance(response, dict):
         raise TypeError('ответ API не словарь')
-    elif 'homeworks' not in response.keys():
+    elif 'homeworks' not in response:
         raise ValueError('В ответе API нет ключа homeworks')
-    elif type(response['homeworks']) != list:
+    elif not isinstance(response['homeworks'], list):
         raise TypeError('Домашние задания приходят не в виде списка')
     homeworks = response.get('homeworks')
     return homeworks
@@ -83,17 +83,10 @@ def parse_status(homework):
 
 def check_tokens():
     """Тест переменных окружения."""
-    if (
-        PRACTICUM_TOKEN is not None
-        and TELEGRAM_TOKEN is not None
-        and TELEGRAM_CHAT_ID is not None
-    ):
-        return True
-    else:
-        return False
+    return all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID])
 
 
-Cashe = {'message': None, 'error': None}
+CASHE = {'message': None, 'error': None}
 
 
 def main():  # noqa: C901
@@ -102,17 +95,17 @@ def main():  # noqa: C901
     if not check_tokens():
         logger.critical('Работа програмы завершена,'
                         ' т.к. нет переменных окружения', exc_info=True)
-        raise SystemExit(1, 'finished')
+        sys.exit('Работа програмы завершена')
     logger.debug('Проверка переменных окружения прошла успешно')
 
     logger.debug('Инициализируем бота...')
     try:
         bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    except Exception as error:
+    except telegram.error.InvalidToken as error:
         message = f'Сбой при инициализации бота: {error}'
         logger.critical(f'Работа програмы завершена: {message}',
                         exc_info=True)
-        raise SystemExit(1, 'finished')
+        sys.exit('Работа програмы завершена')
     else:
         logger.debug('Инициализация бота прошла успешно')
     current_timestamp = int(time.time())
@@ -128,21 +121,21 @@ def main():  # noqa: C901
             else:
                 logger.debug('Извлекаем статус задания...')
                 message = parse_status(homeworks[0])
-                if Cashe['message'] != message:
-                    Cashe['message'] = message
+                if CASHE['message'] != message:
+                    CASHE['message'] = message
                     send_message(bot, message)
                 else:
                     logger.debug(f'Ответ не изменился: {message}')
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             logger.exception(message)
-            if Cashe['error'] != message:
-                Cashe['error'] = message
+            if CASHE['error'] != message:
+                CASHE['error'] = message
                 send_message(bot, message)
-            time.sleep(RETRY_TIME)
         else:
             current_timestamp = response.get('current_date')
-            time.sleep(RETRY_TIME)
+        finally:
+            time.sleep(TELEGRAM_RETRY_TIME)
 
 
 if __name__ == '__main__':
