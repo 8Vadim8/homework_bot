@@ -27,6 +27,7 @@ HOMEWORK_STATUSES = {
     'reviewing': 'Работа взята на проверку ревьюером.',
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
 }
+CASHE = {'message': None, 'error': None}
 
 logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger(__name__)
@@ -83,18 +84,19 @@ def parse_status(homework):
 
 def check_tokens():
     """Тест переменных окружения."""
-    return all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID])
-
-
-CASHE = {'message': None, 'error': None}
+    result = True
+    for token in ("PRACTICUM_TOKEN", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID"):
+        if globals()[token] is None or globals()[token] == '':
+            logger.critical(f'Нет переменной окружения {token}')
+            result = False
+    return result
 
 
 def main():  # noqa: C901
     """Основная логика работы бота."""
     logger.debug('Проверяем переменные окружения на None...')
     if not check_tokens():
-        logger.critical('Работа програмы завершена,'
-                        ' т.к. нет переменных окружения', exc_info=True)
+        logger.critical('Работа програмы завершена!!!', exc_info=True)
         sys.exit('Работа програмы завершена')
     logger.debug('Проверка переменных окружения прошла успешно')
 
